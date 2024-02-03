@@ -94,6 +94,7 @@ class ContextRecall(MetricWithLLM):
 
     def _compute_score(self, response: t.Any) -> float:
         if response:
+            if isinstance(response, dict) and "classification" in response: response = response["classification"]
             response = [
                 int(item.get("Attributed", "0").strip() == "1")
                 if item.get("Attributed")
