@@ -70,7 +70,6 @@ class ContextPrecision(MetricWithLLM):
     name: str = "context_precision"  # type: ignore
     evaluation_mode: EvaluationMode = EvaluationMode.qcg  # type: ignore
     context_precision_prompt: Prompt = field(default_factory=lambda: CONTEXT_PRECISION)
-    batch_size: int = 15
 
     def _get_row_attributes(self, row: t.Dict) -> t.Tuple[str, t.List[str], t.Any]:
         answer = "ground_truth"
@@ -93,6 +92,9 @@ class ContextPrecision(MetricWithLLM):
 
     def _calculate_average_precision(self, json_responses: t.List[t.Dict]) -> float:
         score = np.nan
+        json_responses = [
+            item if isinstance(item, dict) else {} for item in json_responses
+        ]
         verdict_list = [
             int("1" == resp.get("verdict", "0").strip())
             if resp.get("verdict")
