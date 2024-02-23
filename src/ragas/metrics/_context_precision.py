@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 
 CONTEXT_PRECISION = Prompt(
     name="context_precision",
-    instruction="""Given question, answer and context verify if the context was useful in arriving at the given answer. Give verdict as "1" if useful and "0" if not. """,
+    instruction="""Given question, answer and context verify if the context was useful in arriving at the given answer. Give verdict as "1" if useful and "0" if not with json output. """,
     examples=[
         {
             "question": """What can you tell me about albert Albert Einstein?""",
@@ -96,7 +96,7 @@ class ContextPrecision(MetricWithLLM):
             item if isinstance(item, dict) else {} for item in json_responses
         ]
         verdict_list = [
-            int("1" == resp.get("verdict", "0").strip())
+            int("1" == resp.get("verdict", "").strip())
             if resp.get("verdict")
             else np.nan
             for resp in json_responses
@@ -109,6 +109,10 @@ class ContextPrecision(MetricWithLLM):
             ]
         )
         score = numerator / denominator
+        if np.isnan(score):
+            logger.warning(
+                "Invalid response format. Expected a list of dictionaries with keys 'verdict'"
+            )
         return score
 
     async def _ascore(

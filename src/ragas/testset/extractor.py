@@ -39,7 +39,7 @@ class Extractor(ABC):
 
 
 @dataclass
-class keyphraseExtractor(Extractor):
+class KeyphraseExtractor(Extractor):
     keyphrase_extraction_prompt: Prompt = field(
         default_factory=lambda: keyphrase_extraction_prompt
     )
@@ -50,6 +50,7 @@ class keyphraseExtractor(Extractor):
         keyphrases = await json_loader.safe_load(
             results.generations[0][0].text.strip(), llm=self.llm, is_async=is_async
         )
+        keyphrases = keyphrases if isinstance(keyphrases, dict) else {}
         logger.debug("keyphrases: %s", keyphrases)
         return keyphrases.get("keyphrases", [])
 

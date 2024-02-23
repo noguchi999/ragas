@@ -33,8 +33,6 @@ class Prompt(BaseModel):
     """
     Prompt is a class that represents a prompt for the ragas metrics.
 
-    Prompt is a class that represents a prompt for the ragas metrics.
-
     Attributes:
         name (str): The name of the prompt.
         instruction (str): The instruction for the prompt.
@@ -93,7 +91,12 @@ class Prompt(BaseModel):
         """
         Generate the prompt string from the variables.
         """
-        prompt_str = self.instruction + "\n"
+        added_json_instruction = (
+            "\nOutput in only valid JSON format."
+            if self.output_type.lower() == "json"
+            else ""
+        )
+        prompt_str = self.instruction + added_json_instruction + "\n"
 
         if self.examples:
             # Format the examples to match the Langchain prompt template
@@ -149,8 +152,17 @@ class Prompt(BaseModel):
     def adapt(
         self, language: str, llm: BaseRagasLLM, cache_dir: t.Optional[str] = None
     ) -> Prompt:
+        def get_all_keys(nested_json):
+            keys = set()
+            for key, value in nested_json.items():
+                keys.add(key)
+                if isinstance(value, dict):
+                    keys = keys.union(get_all_keys(value))
+            return keys
+
         if self.language == language:
             return self
+
         # TODO: Add callbacks
         cache_dir = cache_dir if cache_dir else get_cache_dir()
         if os.path.exists(os.path.join(cache_dir, language, f"{self.name}.json")):
@@ -158,6 +170,7 @@ class Prompt(BaseModel):
 
         logger.info("Adapting %s to %s", self.name, language)
         prompts = []
+        output_keys = []
         for example in self.examples:
             prompts.extend(
                 [
@@ -176,6 +189,14 @@ class Prompt(BaseModel):
                     translate_to=language, input=example.get(self.output_key)
                 )
             )
+            if self.output_type.lower() == "json":
+                output = example.get(self.output_key)
+                if isinstance(output, str):
+                    output = json.loads(output)
+                if isinstance(output, dict):
+                    output_keys.append(get_all_keys(output))
+                elif isinstance(output, list):
+                    output_keys.append([get_all_keys(item) for item in output])
 
         # NOTE: this is a slow loop, consider Executor to fasten this
         results = []
@@ -199,6 +220,17 @@ class Prompt(BaseModel):
                 if self.output_type.lower() == "json"
                 else example[-1]
             )
+
+            if self.output_type.lower() == "json":
+                output = example_dict[self.output_key]
+                if isinstance(output, dict):
+                    assert (
+                        set(output.keys()) == output_keys[i]
+                    ), "Adapted output keys do not match with the original output keys"
+                elif isinstance(output, list):
+                    assert all(
+                        set(item.keys()) in output_keys[i] for item in output
+                    ), "Adapted output keys do not match with the original output keys"
 
             self.examples[i] = example_dict
 
@@ -242,18 +274,22 @@ str_translation = Prompt(
 
 json_translatation = Prompt(
     name="json_translation",
-    instruction="Translate values in given json to target language ",
+    instruction="Translate values in given json to target language and output the translated json",
     examples=[
         {
             "translate_to": "hindi",
-            "input": """{"statements": [
-            "Albert Einstein was born in Germany.",
-            "Albert Einstein was best known for his theory of relativity."
-        ]}""",
-            "output": """{"statements": [
-    "अल्बर्ट आइंस्टीन का जन्म जर्मनी में हुआ था।",
-    "अल्बर्ट आइंस्टीन अपने सापेक्षता के सिद्धांत के लिए सबसे अधिक प्रसिद्ध थे।"
-    ]}""",
+            "input": {
+                "statements": [
+                    "Albert Einstein was born in Germany.",
+                    "Albert Einstein was best known for his theory of relativity.",
+                ]
+            },
+            "output": {
+                "statements": [
+                    "अल्बर्ट आइंस्टीन का जन्म जर्मनी में हुआ था।",
+                    "अल्बर्ट आइंस्टीन अपने सापेक्षता के सिद्धांत के लिए सबसे अधिक प्रसिद्ध थे।",
+                ]
+            },
         }
     ],
     input_keys=["translate_to", "input"],

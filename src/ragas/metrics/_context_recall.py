@@ -52,13 +52,11 @@ CONTEXT_RECALL_RA = Prompt(
             "question": """who won 2020 icc world cup?""",
             "context": """The 2022 ICC Men's T20 World Cup, held from October 16 to November 13, 2022, in Australia, was the eighth edition of the tournament. Originally scheduled for 2020, it was postponed due to the COVID-19 pandemic. England emerged victorious, defeating Pakistan by five wickets in the final to clinch their second ICC Men's T20 World Cup title.""",
             "answer": """England""",
-            "classification": [
-                {
-                    "statement_1": "England won the 2022 ICC Men's T20 World Cup.",
-                    "reason": "From context it is clear that England defeated Pakistan to win the World Cup.",
-                    "Attributed": "1",
-                }
-            ],
+            "classification": {
+                "statement_1": "England won the 2022 ICC Men's T20 World Cup.",
+                "reason": "From context it is clear that England defeated Pakistan to win the World Cup.",
+                "Attributed": "1",
+            },
         },
     ],
     input_keys=["question", "context", "answer"],
@@ -90,19 +88,24 @@ class ContextRecall(MetricWithLLM):
         return self.context_recall_prompt.format(question=qstn, context=ctx, answer=gt)
 
     def _compute_score(self, response: t.Any) -> float:
-        if response:
-            if isinstance(response, dict) and "classification" in response: response = response["classification"]
-            response = [
-                int(item.get("Attributed", "0").strip() == "1")
-                if item.get("Attributed")
-                else np.nan
-                for item in response
-            ]
-            denom = len(response)
-            numerator = sum(response)
-            return numerator / denom
-        else:
-            return np.nan
+        response = response if isinstance(response, list) else [response]
+        response = [item if isinstance(item, dict) else {} for item in response]
+        response = [
+            int(item.get("Attributed").strip() == "1")
+            if item.get("Attributed")
+            else np.nan
+            for item in response
+        ]
+        denom = len(response)
+        numerator = sum(response)
+        score = numerator / denom
+
+        if np.isnan(score):
+            logger.warning(
+                "Invalid JSON response. Expected dictionary with key 'Attributed'"
+            )
+
+        return score
 
     async def _ascore(self, row: t.Dict, callbacks: Callbacks, is_async: bool) -> float:
         assert self.llm is not None, "set LLM before use"
